@@ -1,64 +1,41 @@
-# functions/get_files_info.py
-
 import os
+from google.genai import types
 
 
 def get_files_info(working_directory, directory=None):
-    """
-    Lists the contents of a directory and its metadata as a formatted string.
-
-    Args:
-        working_directory (str): The base directory the agent is allowed to
-                                 access. The "jail".
-        directory (str, optional): The specific directory to list, relative
-                                   to the working_directory. Defaults to the
-                                   working_directory itself.
-
-    Returns:
-        str: A formatted string of the directory contents or an error message.
-    """
+    abs_working_dir = os.path.abspath(working_directory)
+    target_dir = abs_working_dir
+    if directory:
+        target_dir = os.path.abspath(os.path.join(working_directory, directory))
+    if not target_dir.startswith(abs_working_dir):
+        return f'Error: Cannot list "{directory}" as it is outside the permitted working directory'
+    if not os.path.isdir(target_dir):
+        return f'Error: "{directory}" is not a directory'
     try:
-        # Determine the target path to list
-        if directory is None:
-            # If no specific directory is given, use the root of the jail
-            target_path = working_directory
-        else:
-            # If a directory is given, join it with the jail's path
-            target_path = os.path.join(working_directory, directory)
-
-        # --- Security Check ---
-        # Resolve the real, absolute paths
-        abs_working_dir = os.path.abspath(working_directory)
-        abs_target_path = os.path.abspath(target_path)
-
-        # Ensure the resolved target path is still inside the working directory
-        if not abs_target_path.startswith(abs_working_dir):
-            return (
-                f'Error: Cannot list "{directory}" as it is outside the '
-                "permitted working directory"
+        files_info = []
+        for filename in os.listdir(target_dir):
+            filepath = os.path.join(target_dir, filename)
+            file_size = 0
+            is_dir = os.path.isdir(filepath)
+            file_size = os.path.getsize(filepath)
+            files_info.append(
+                f"- {filename}: file_size={file_size} bytes, is_dir={is_dir}"
             )
-
-        # --- Path Validation ---
-        if not os.path.isdir(abs_target_path):
-            return f'Error: "{directory or "."}" is not a directory'
-
-        # --- Build the Output String ---
-        output_lines = []
-        for item_name in sorted(os.listdir(abs_target_path)):
-            item_path = os.path.join(abs_target_path, item_name)
-            stats = os.stat(item_path)
-            is_dir = os.path.isdir(item_path)
-            file_size = stats.st_size
-
-            output_lines.append(
-                f"- {item_name}: file_size={file_size} bytes, is_dir={is_dir}"
-            )
-
-        if not output_lines:
-            return "Directory is empty."
-
-        return "\n".join(output_lines)
-
+        return "\n".join(files_info)
     except Exception as e:
-        # Catch any other potential OS errors (e.g., permission denied)
-        return f"Error: {e}"
+        return f"Error listing files: {e}"
+
+
+schema_get_files_info = types.FunctionDeclaration(
+    name="get_files_info",
+    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "directory": types.Schema(
+                type=types.Type.STRING,
+                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+            ),
+        },
+    ),
+)
